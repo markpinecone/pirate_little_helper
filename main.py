@@ -1,116 +1,69 @@
-import pygetwindow as gw
-import pyautogui
-import numpy as np
-import cv2
-import winsound
-import time
-import keyboard
+from kivy.app import App
+from kivy.uix.boxlayout import BoxLayout
+from kivy.clock import Clock
+from kivy.uix.label import Label
+from kivy.properties import ObjectProperty, BooleanProperty
+from kivy.lang import Builder
+from color_detector import ColorDetector
 
+# Load the KV file
+Builder.load_file('pirate_little_helper.kv')
 
-class Alerting:
-    def __init__(self):
-        pass
+class MainWindow(BoxLayout):
+    log_layout = ObjectProperty()
+    paused = BooleanProperty(True)  # Initialize as True to prevent auto-starting
 
-    def play_blue_alert(self):
-        winsound.PlaySound("C:\\Windows\\Media\\Windows Message Nudge.wav", winsound.SND_FILENAME)
+    def update_log(self, message):
+        new_log_entry = Label(
+            text=message,
+            size_hint_y=None,
+            height=30,
+            markup=True,
+            color=(1, 1, 1, 1)
+        )
+        self.log_layout.add_widget(new_log_entry)
+        self.log_layout.height += new_log_entry.height
 
-    def play_rg_alert(self):
-        winsound.PlaySound("C:\\Windows\\Media\\tada.wav", winsound.SND_FILENAME)
+    def start(self):
+        # Avoid re-scheduling if it's already started
+        if self.paused:
+            self.paused = False
+            self.update_log("Started")
+            # Use get_running_app to correctly access the Application instance
+            app = App.get_running_app()
+            Clock.schedule_interval(app.update_detection, 2)
 
+    def stop(self):
+        # Avoid stopping if it's already stopped
+        if not self.paused:
+            self.paused = True
+            self.update_log("Stopped")
+            # Again, use get_running_app for accessing the Application instance for unscheduling
+            app = App.get_running_app()
+            Clock.unschedule(app.update_detection)
 
+class Application(App):
+    def build(self):
+        colors_dict = {'blue': (1, 1, 192), 'red': (175, 1, 1), 'green': (0, 191, 1)}
+        self.detector = ColorDetector(window_title='Entropia Universe Client (64 bit) [Space]', colors_dict=colors_dict)
+        self.main_window = MainWindow()
+        return self.main_window
 
-class ColorDetector:
-    def __init__(self, window_title, colors_dict, tolerance=0.02, avg_window=5):
-        self.window_title = window_title
-        self.colors_dict = colors_dict
-        self.tolerance = tolerance
-        self.avg_window = avg_window
-        self.last_alert_times = {color: 0 for color in colors_dict.keys()}
-        self.last_blue_pixel_counts = []
-        self.alerting = Alerting()
-        self.last_alert_times['rg'] = 0
+    def update_detection(self, dt):
+        # Make sure this still checks for 'paused' as a safety, though it should be managed via scheduling now
+        if not self.main_window.paused:
+            pixel_counts = self.detector.detect_and_alert()
+            if pixel_counts is not None:
+                formatted_counts = self.format_pixel_counts(pixel_counts)
+                self.main_window.update_log(f"Pixel counts for each color: {formatted_counts}")
 
-    def _get_window_screenshot(self):
-        window = gw.getWindowsWithTitle(self.window_title)[0]
-        left, top, width, height = window.left, window.top, window.width, window.height
-        screenshot = pyautogui.screenshot(region=(left, top, width, height))
-        return np.array(screenshot)
+    def format_pixel_counts(self, pixel_counts):
+        formatted_counts = "{"
+        for color, count in pixel_counts.items():
+            hex_color = '0000ff' if color == 'blue' else 'ff0000' if color == 'red' else '00bf01'
+            formatted_counts += f"[color={hex_color}]{color}[/color]: {count}, "
+        formatted_counts = formatted_counts.rstrip(', ') + "}"
+        return formatted_counts
 
-    def _get_pixel_counts(self, image):
-        pixel_counts = {}
-        for color_name, color_rgb in self.colors_dict.items():
-            tolerance_rgb = tuple(int(255 * self.tolerance) for _ in range(3))
-            lower_bound = np.subtract(color_rgb, tolerance_rgb)
-            upper_bound = np.add(color_rgb, tolerance_rgb)
-            mask = cv2.inRange(image, lower_bound, upper_bound)
-            pixel_counts[color_name] = np.count_nonzero(mask)
-        return pixel_counts
-
-    def _check_blue_alert_condition(self, pixel_count_threshold):
-        current_time = time.time()
-        if not self.last_blue_pixel_counts:
-            return False  # Return False if the list is empty
-        mean_blue_count = np.mean(self.last_blue_pixel_counts)
-        threshold_percentage = 0.02  # 1% threshold for change
-        change_threshold = mean_blue_count * threshold_percentage
-        return (current_time - self.last_alert_times['blue'] >= 30 and 
-                pixel_count_threshold > 2 and 
-                abs(pixel_count_threshold - mean_blue_count) > change_threshold)
-
-    def _check_rg_alert_condition(self, pixel_counts):
-        current_time = time.time()
-        rg_pixel_count = sum(pixel_counts[color] for color in ['red', 'green'])
-        return (current_time - self.last_alert_times['rg'] >= 30 and 
-                rg_pixel_count > 2)
-
-    def detect_and_alert(self):
-        image = self._get_window_screenshot()
-        pixel_counts = self._get_pixel_counts(image)
-
-        # Store the current blue pixel count
-        self.last_blue_pixel_counts.append(pixel_counts['blue'])
-        if len(self.last_blue_pixel_counts) > 3:
-            self.last_blue_pixel_counts.pop(0)  # Ensure only the last 3 counts are stored
-
-        # Check for blue alert
-        if self._check_blue_alert_condition(pixel_counts['blue']):
-            self.alerting.play_blue_alert()
-            self.last_alert_times['blue'] = time.time()
-
-        # Check for red or green alert
-        if self._check_rg_alert_condition(pixel_counts):
-            self.alerting.play_rg_alert()
-            self.last_alert_times['rg'] = time.time()
-
-        del image
-        return pixel_counts
-
-
-class Application:
-    def __init__(self, detector, delay_seconds=2):
-        self.detector = detector
-        self.delay_seconds = delay_seconds
-        self.paused = False
-
-    def toggle_pause(self):
-        self.paused = not self.paused
-        print("Paused" if self.paused else "Resumed")
-
-    def run(self):
-        keyboard.add_hotkey('win+shift+x', self.toggle_pause)
-        while True:
-            if not self.paused:
-                pixel_counts = self.detector.detect_and_alert()
-                print("Pixel counts for each color:", pixel_counts)
-            time.sleep(self.delay_seconds)
-
-# Example usage:
-window_title = 'Entropia Universe Client (64 bit) [Space]'
-colors = {
-    'blue': (1, 1, 192),
-    'red': (175, 1, 1),
-    'green': (0, 191, 1)
-}
-detector = ColorDetector(window_title, colors)
-app = Application(detector)
-app.run()
+if __name__ == '__main__':
+    Application().run()

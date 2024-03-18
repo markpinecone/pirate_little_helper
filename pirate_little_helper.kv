@@ -1,0 +1,32 @@
+<MainWindow>:
+    log_layout: log_layout  # Link the ObjectProperty to the dynamic BoxLayout for logging
+    orientation: 'vertical'
+    padding: 10
+
+    BoxLayout:
+        size_hint_y: None
+        height: dp(100)  # Adjust this value as needed to change the total height of the button area
+        orientation: 'horizontal'
+        padding: 10
+        spacing: 10
+
+        Button:
+            text: 'Start'
+            on_press: root.start()
+            size_hint_x: 1  # Adjust button width relative to the parent BoxLayout
+
+        Button:
+            text: 'Stop'
+            on_press: root.stop()
+            size_hint_x: 1  # Adjust button width relative to the parent BoxLayout
+
+    ScrollView:
+        size_hint: 1, 0.7  # Adjusted to give more space to the ScrollView
+        BoxLayout:
+            id: log_layout  # Correctly defines BoxLayout for holding log messages
+            orientation: 'vertical'
+            size_hint_y: None
+            size_hint_x: 1
+            height: self.minimum_height  # Allows dynamic resizing
+            padding: 5
+            spacing: 5
