@@ -38,7 +38,7 @@ class ColorDetector:
             return np.array(screenshot)
         except IndexError:
             # Handle the case when the window is not found
-            print("Window not found. Skipping current iteration.")
+            print("Not in space or window not found. Skipping current iteration.")
             return None
 
     def _get_pixel_counts(self, image):
@@ -96,22 +96,32 @@ class Application:
         self.detector = detector
         self.delay_seconds = delay_seconds
         self.paused = False
+        self.running = True  # Add a flag to control the main loop
 
     def toggle_pause(self):
         self.paused = not self.paused
         print("Paused" if self.paused else "Resumed")
 
+    def stop(self):
+        self.running = False  # Set the running flag to False to exit the loop
+
     def run(self):
         keyboard.add_hotkey('win+shift+x', self.toggle_pause)
-        while True:
-            if not self.paused:
-                image = self.detector._get_window_screenshot()
-                if image is not None:
-                    pixel_counts = self.detector._get_pixel_counts(image)
-                    print("Pixel counts for each color:", pixel_counts)
-                    del image
-            time.sleep(self.delay_seconds)
+        keyboard.add_hotkey('ctrl+shift+q', self.stop)  # Define hotkey to stop the application
+        try:
+            while self.running:  # Main loop controlled by the running flag
+                if not self.paused:
+                    image = self.detector._get_window_screenshot()
+                    if image is not None:
+                        pixel_counts = self.detector._get_pixel_counts(image)
+                        print("Pixel counts for each color:", pixel_counts)
+                        del image
+                time.sleep(self.delay_seconds)
+        except KeyboardInterrupt:
+            print("\nProgram terminated by user.")
+            # Perform any cleanup actions if needed
 
+# Example usage:
 window_title = 'Entropia Universe Client (64 bit) [Space]'
 colors = {
     'blue': (1, 1, 192),
