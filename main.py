@@ -31,10 +31,15 @@ class ColorDetector:
         self.last_alert_times['rg'] = 0
 
     def _get_window_screenshot(self):
-        window = gw.getWindowsWithTitle(self.window_title)[0]
-        left, top, width, height = window.left, window.top, window.width, window.height
-        screenshot = pyautogui.screenshot(region=(left, top, width, height))
-        return np.array(screenshot)
+        try:
+            window = gw.getWindowsWithTitle(self.window_title)[0]
+            left, top, width, height = window.left, window.top, window.width, window.height
+            screenshot = pyautogui.screenshot(region=(left, top, width, height))
+            return np.array(screenshot)
+        except IndexError:
+            # Handle the case when the window is not found
+            print("Window not found. Skipping current iteration.")
+            return None
 
     def _get_pixel_counts(self, image):
         pixel_counts = {}
@@ -100,11 +105,13 @@ class Application:
         keyboard.add_hotkey('win+shift+x', self.toggle_pause)
         while True:
             if not self.paused:
-                pixel_counts = self.detector.detect_and_alert()
-                print("Pixel counts for each color:", pixel_counts)
+                image = self.detector._get_window_screenshot()
+                if image is not None:
+                    pixel_counts = self.detector._get_pixel_counts(image)
+                    print("Pixel counts for each color:", pixel_counts)
+                    del image
             time.sleep(self.delay_seconds)
 
-# Example usage:
 window_title = 'Entropia Universe Client (64 bit) [Space]'
 colors = {
     'blue': (1, 1, 192),
